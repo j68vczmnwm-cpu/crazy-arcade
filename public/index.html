@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Crazy Arcade Multiplayer</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>Crazy Arcade Multiplayer</h1>
+      <div id="lobby" class="lobby">
+        <input id="nicknameInput" type="text" maxlength="16" placeholder="닉네임 입력" />
+        <button id="joinBtn">입장</button>
+      </div>
+      <div class="status-row">
+        <span id="roomInfo">0/4명</span>
+      </div>
+      <canvas id="gameCanvas" width="800" height="640"></canvas>
+      <div class="chat-box">
+        <div id="chatLog" class="chat-log"></div>
+        <input id="chatInput" type="text" maxlength="120" placeholder="엔터로 채팅 전송" />
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="./game.js"></script>
+  </body>
+</html>
