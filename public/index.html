@@ -7,22 +7,137 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <div class="container">
-      <h1>Crazy Arcade Multiplayer</h1>
-      <div id="lobby" class="lobby">
-        <input id="nicknameInput" type="text" maxlength="16" placeholder="닉네임 입력" />
-        <button id="joinBtn">입장</button>
+    <div id="loadingScreen" style="position:fixed;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;background:linear-gradient(180deg,#050505,#0b1f44);color:#fff;z-index:9999;">
+      <div style="font-size:48px;font-weight:800;letter-spacing:1px;">💣 FRONT ARCADE</div>
+      <div style="width:360px;height:14px;border:1px solid #fff;margin-top:18px;overflow:hidden;border-radius:8px;">
+        <div id="loadingBar" style="height:100%;width:0%;background:linear-gradient(90deg,#ff7a18,#ffd200);"></div>
       </div>
-      <div class="status-row">
-        <span id="roomInfo">0/4명</span>
-      </div>
-      <canvas id="gameCanvas" width="800" height="640"></canvas>
-      <div class="chat-box">
-        <div id="chatLog" class="chat-log"></div>
-        <input id="chatInput" type="text" maxlength="120" placeholder="엔터로 채팅 전송" />
-      </div>
+      <div id="loadingTip" style="margin-top:16px;font-size:16px;opacity:0.92;"></div>
     </div>
 
+    <div class="container">
+      <h1>Crazy Arcade Multiplayer</h1>
+
+      <div id="lobbyPanel" class="lobby">
+        <div id="stepNickname">
+          <h3>1) 닉네임 입력</h3>
+          <input id="nicknameInput" type="text" maxlength="16" placeholder="닉네임 입력" />
+          <button id="toCustomizeBtn">다음: 커스터마이징</button>
+          <div id="nicknameWarn"></div>
+        </div>
+
+        <div id="stepCustomize" style="display: none">
+          <h3>2) 캐릭터 커스터마이징</h3>
+          <div class="game-layout">
+            <div style="text-align: left; width: 460px">
+              <label>모양</label>
+              <select id="shapeSelect">
+                <option value="circle">원형</option>
+                <option value="square">사각형</option>
+                <option value="star">별모양</option>
+                <option value="triangle">삼각형</option>
+                <option value="diamond">다이아몬드</option>
+              </select>
+
+              <label>메인 색상</label>
+              <input id="mainColorPicker" type="color" />
+              <div id="mainPreset"></div>
+
+              <label>테두리 색상</label>
+              <input id="borderColorPicker" type="color" />
+              <div id="borderPreset"></div>
+
+              <label>크기 (24~41)</label>
+              <input id="sizeRange" type="range" min="24" max="41" value="34" />
+              <span id="sizeText">34px</span>
+
+              <label>꾸미기 아이콘</label>
+              <select id="iconSelect">
+                <option value="none">없음</option>
+                <option value="👑">👑</option>
+                <option value="⭐">⭐</option>
+                <option value="🔥">🔥</option>
+                <option value="❄️">❄️</option>
+                <option value="💀">💀</option>
+                <option value="🎮">🎮</option>
+                <option value="🐱">🐱</option>
+                <option value="🐶">🐶</option>
+                <option value="🦊">🦊</option>
+              </select>
+
+              <div id="colorWarn"></div>
+              <button id="toModeBtn">다음: 모드 선택</button>
+            </div>
+            <div style="width: 220px">
+              <h4>미리보기</h4>
+              <canvas id="previewCanvas" width="220" height="220"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div id="stepMode" style="display: none">
+          <h3>3) 방 만들기 / 방 선택하기</h3>
+          <div style="text-align: left; width: 640px; margin: 0 auto">
+            <h4>방 만들기</h4>
+            <select id="createModeSelect">
+              <option value="duel">1:1 개인전</option>
+              <option value="ai_battle">2:2 AI 대전</option>
+              <option value="coop_duo">2:2 AI 협동전 (플레이어+AI vs 상대플레이어+AI)</option>
+            </select>
+            <button id="createRoomBtn">방 만들기</button>
+
+            <h4 style="margin-top: 16px">방 선택하기</h4>
+            <button id="refreshRoomsBtn">목록 새로고침</button>
+            <div id="roomListBox"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="gamePanel" style="display: none">
+        <div class="status-row">
+          <span id="myStats">💣 1 | 🔥 1 | ⚡ 144</span>
+          <span id="teamScore"></span>
+          <span id="gameTimer">⏱ 00:00</span>
+          <span id="roomInfo">Room: -</span>
+        </div>
+        <div id="waitingText"></div>
+        <div id="roomLobbyControls">
+          <select id="roomModeSelect">
+            <option value="duel">1:1 개인전</option>
+            <option value="ai_battle">2:2 AI 대전</option>
+            <option value="coop_duo">2:2 AI 협동전</option>
+          </select>
+          <button id="changeModeBtn">모드 변경</button>
+          <button id="readyBtn">레디</button>
+        </div>
+        <button id="startSoloBtn" style="display: none">게임 시작 (AI 자동 채움)</button>
+        <div class="game-layout">
+          <canvas id="gameCanvas" width="720" height="624"></canvas>
+          <div class="side-panel">
+            <h3>플레이어</h3>
+            <div id="playerList">-</div>
+            <h3 style="margin-top:10px;">스코어보드</h3>
+            <div id="scoreboard">-</div>
+            <div id="resultText"></div>
+            <button id="backLobbyBtn">로비로 돌아가기</button>
+            <div class="chat-box" style="margin-top:8px;">
+              <div id="chatLog" class="chat-log"></div>
+              <input id="chatInput" type="text" maxlength="120" placeholder="엔터로 채팅 전송" />
+            </div>
+          </div>
+        </div>
+        <div id="itemToast" style="position:absolute;left:50%;top:130px;transform:translateX(-50%);font-weight:700;font-size:26px;display:none;"></div>
+      </div>
+    </div>
+    <div id="finalScoreOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.76);display:none;z-index:10000;color:#fff;align-items:center;justify-content:center;flex-direction:column;">
+      <h2>최종 스코어보드</h2>
+      <div id="finalScoreTable"></div>
+      <div id="finalMvp" style="margin-top:8px;"></div>
+      <div id="finalActions" style="display:none;margin-top:16px;">
+        <button id="finalRestartBtn">재시작</button>
+        <button id="finalLobbyBtn">로비로</button>
+      </div>
+    </div>
     <script src="/socket.io/socket.io.js"></script>
     <script src="./game.js"></script>
   </body>
