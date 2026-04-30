@@ -21,6 +21,7 @@ let myId = null;
 let joined = false;
 let gameState = null;
 let currentDirection = null;
+let resultText = "";
 
 const playerColors = ["#2f7bff", "#4ad14a", "#9b59ff", "#ff9f40"];
 
@@ -57,6 +58,10 @@ window.addEventListener("keydown", (event) => {
   if (event.key === " ") {
     event.preventDefault();
     socket.emit("placeBomb");
+  }
+  if ((event.key === "r" || event.key === "R") && resultText) {
+    socket.emit("restartRequest");
+    resultText = "";
   }
 });
 
@@ -111,18 +116,21 @@ socket.on("gameOver", ({ winnerId }) => {
   appendChat(text);
 });
 
+socket.on("winner", ({ winnerId }) => {
+  resultText = winnerId === myId ? "You Win!" : `Winner: ${winnerId}`;
+  appendChat(`🏆 ${resultText}`);
+});
+
+socket.on("draw", ({ message }) => {
+  resultText = "Draw";
+  appendChat(`🤝 ${message || "무승부"}`);
+});
+
 socket.on("stageOver", ({ message }) => {
   appendChat(`✅ ${message || "Stage Over"}`);
 });
 
 socket.on("gameState", (state) => {
-  console.log("[client] gameState 수신", {
-    roomId: state?.roomId,
-    hasMap: Array.isArray(state?.map),
-    players: state?.players?.length ?? 0,
-    bombs: state?.bombs?.length ?? 0,
-    items: state?.items?.length ?? 0,
-  });
   gameState = state;
   roomInfo.textContent = `${state.roomCount}/4명`;
   if (!window.__firstStateLogged) {
@@ -149,8 +157,8 @@ function drawMap(map) {
 
 function drawBombs(bombs) {
   for (const bomb of bombs) {
-    const cx = MAP_OFFSET_X + bomb.col * TILE_SIZE + TILE_SIZE / 2;
-    const cy = MAP_OFFSET_Y + bomb.row * TILE_SIZE + TILE_SIZE / 2;
+    const cx = bomb.x;
+    const cy = bomb.y;
     ctx.beginPath();
     ctx.fillStyle = "#ffdc3a";
     ctx.arc(cx, cy, TILE_SIZE * 0.28, 0, Math.PI * 2);
@@ -174,8 +182,8 @@ function drawExplosions(explosions) {
 
 function drawItems(items) {
   for (const item of items) {
-    const cx = MAP_OFFSET_X + item.col * TILE_SIZE + TILE_SIZE / 2;
-    const cy = MAP_OFFSET_Y + item.row * TILE_SIZE + TILE_SIZE / 2;
+    const cx = item.x;
+    const cy = item.y;
     ctx.beginPath();
     if (item.type === "bomb") ctx.fillStyle = "#ffd642";
     else if (item.type === "range") ctx.fillStyle = "#ff4a4a";
@@ -225,9 +233,20 @@ function drawHud(state) {
   ctx.fillStyle = "#fff";
   ctx.font = "18px Arial";
   if (me) {
-    ctx.fillText(`💣 ${me.maxBombs}`, 18, 28);
+    ctx.fillText(`💣 ${me.bombCount}`, 18, 28);
     ctx.fillText(`🔥 ${me.bombRange}`, 18, 52);
-    ctx.fillText(`⚡ ${me.speedLevel}`, 18, 76);
+    ctx.fillText(`⚡ ${me.speed}`, 18, 76);
+  }
+  if (resultText) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 46px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(resultText, canvas.width / 2, canvas.height / 2 - 10);
+    ctx.font = "20px Arial";
+    ctx.fillText("Press R or click Restart", canvas.width / 2, canvas.height / 2 + 30);
+    ctx.textAlign = "start";
   }
 }
 
@@ -246,5 +265,14 @@ function loop() {
   render();
   requestAnimationFrame(loop);
 }
+
+const restartBtn = document.createElement("button");
+restartBtn.textContent = "Restart";
+restartBtn.style.marginTop = "8px";
+restartBtn.addEventListener("click", () => {
+  socket.emit("restartRequest");
+  resultText = "";
+});
+document.querySelector(".container").appendChild(restartBtn);
 
 loop();

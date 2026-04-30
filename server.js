@@ -19,6 +19,7 @@ const ENTITY_SIZE = TILE_SIZE * 0.72;
 const BOMB_FUSE_MS = 2500;
 const EXPLOSION_DURATION_MS = 200;
 const BUBBLE_AUTO_DEATH_MS = 5000;
+const BOMB_OWNER_PASS_MS = 2000;
 const ITEM_DROP_CHANCE = 0.3;
 const SPEED_BY_LEVEL = { 1: 3, 2: 3.5, 3: 4 };
 
@@ -44,6 +45,17 @@ let roomCounter = 1;
 
 function cloneMap() {
   return INITIAL_MAP.map((row) => [...row]);
+}
+
+function findBottomRightEmptyTile(map) {
+  for (let row = MAP_ROWS - 2; row >= 1; row -= 1) {
+    for (let col = MAP_COLS - 2; col >= 1; col -= 1) {
+      if (map[row][col] === 0 && !(col === 1 && row === 1)) {
+        return { col, row };
+      }
+    }
+  }
+  return { col: 13, row: 11 };
 }
 
 function tileToWorld(col, row) {
@@ -106,6 +118,7 @@ function spawnPlayer(room, socketId, nickname) {
   room.players[socketId] = {
     id: socketId,
     nickname: (nickname || "Player").slice(0, 16),
+    team: "A",
     x: world.x,
     y: world.y,
     width: ENTITY_SIZE,
@@ -135,8 +148,10 @@ function createRoom() {
     gameOver: false,
     winner: null,
     lastTick: Date.now(),
+    stateDirty: true,
   };
-  const aiSpawn = tileToWorld(7, 6);
+  const aiSpawnTile = findBottomRightEmptyTile(room.map);
+  const aiSpawn = tileToWorld(aiSpawnTile.col, aiSpawnTile.row);
   room.aiBots.push({
     id: "ai-1",
     nickname: "AI",
@@ -189,22 +204,54 @@ function moveEntity(room, entity, dt) {
   const tryRectX = { x: entity.x + dx, y: entity.y, w: entity.width, h: entity.height };
   const tryRectY = { x: entity.x, y: entity.y + dy, w: entity.width, h: entity.height };
 
-  const hitX = rectHitsWorld(room, tryRectX);
-  const hitY = rectHitsWorld(room, tryRectY);
-  if (!hitX) entity.x += dx;
-  if (!hitY) entity.y += dy;
+  const hitX = rectHitsWorld(room, entity, tryRectX);
+  const hitY = rectHitsWorld(room, entity, tryRectY);
+  let moved = false;
+  if (!hitX) {
+    entity.x += dx;
+    moved = moved || dx !== 0;
+  }
+  if (!hitY) {
+    entity.y += dy;
+    moved = moved || dy !== 0;
+  }
+  if (moved) {
+    room.stateDirty = true;
+  }
 }
 
-function rectHitsWorld(room, rect) {
+function rectHitsWorld(room, entity, rect) {
+  const now = Date.now();
   const minCol = Math.floor((rect.x - MAP_OFFSET_X) / TILE_SIZE);
   const maxCol = Math.floor((rect.x + rect.w - 1 - MAP_OFFSET_X) / TILE_SIZE);
   const minRow = Math.floor((rect.y - MAP_OFFSET_Y) / TILE_SIZE);
   const maxRow = Math.floor((rect.y + rect.h - 1 - MAP_OFFSET_Y) / TILE_SIZE);
   for (let row = minRow; row <= maxRow; row += 1) {
     for (let col = minCol; col <= maxCol; col += 1) {
-      if (isSolid(room, col, row)) return true;
+      if (isSolid(room, col, row)) {
+        console.log("[move] 막힘 이유:", "wall_or_block", {
+          entityId: entity.id,
+          col,
+          row,
+        });
+        return true;
+      }
       const bomb = getBombAt(room, col, row);
-      if (bomb && rectOverlapsTile(rect, col, row)) return true;
+      if (bomb && rectOverlapsTile(rect, col, row)) {
+        // Owner can pass through only their own bomb for 3s.
+        if (bomb.ownerId === entity.id && now < bomb.ownerPassUntil) {
+          continue;
+        }
+        console.log("[move] 막힘 이유:", "bomb_collision", {
+          entityId: entity.id,
+          bombOwnerId: bomb.ownerId,
+          bombCol: bomb.col,
+          bombRow: bomb.row,
+          now,
+          ownerPassUntil: bomb.ownerPassUntil,
+        });
+        return true;
+      }
     }
   }
   return false;
@@ -240,9 +287,21 @@ function placeBomb(room, owner) {
     ownerId: owner.id,
     ownerIsAi: owner.id.startsWith("ai-"),
     range: owner.bombRange,
+    ownerPassUntil: Date.now() + BOMB_OWNER_PASS_MS,
     explodeAt: Date.now() + BOMB_FUSE_MS,
   });
   owner.availableBombs -= 1;
+  room.stateDirty = true;
+  console.log("[bomb] 설치 후 플레이어 상태", {
+    ownerId: owner.id,
+    x: owner.x,
+    y: owner.y,
+    inputDir: owner.inputDir,
+    alive: owner.alive,
+    isBubbled: owner.isBubbled,
+    availableBombs: owner.availableBombs,
+    maxBombs: owner.maxBombs,
+  });
 }
 
 function explodeBomb(room, bomb) {
@@ -273,6 +332,7 @@ function explodeBomb(room, bomb) {
   }
   room.explosions.push({ cells, endsAt: Date.now() + EXPLOSION_DURATION_MS });
   io.to(room.id).emit("explosion", { cells });
+  room.stateDirty = true;
 
   for (const c of cells) {
     const chained = getBombAt(room, c.col, c.row);
@@ -286,11 +346,31 @@ function bubbleEntity(entity) {
   entity.bubbleEndsAt = Date.now() + BUBBLE_AUTO_DEATH_MS;
 }
 
+function checkRoundOutcome(room) {
+  if (room.gameOver) return;
+  const alivePlayers = Object.values(room.players).filter((p) => p.alive);
+  if (alivePlayers.length === 1) {
+    room.gameOver = true;
+    room.winner = alivePlayers[0].id;
+    io.to(room.winner).emit("winner", { winnerId: room.winner });
+    io.to(room.id).emit("gameOver", { winnerId: room.winner });
+  } else if (alivePlayers.length === 0 && Object.keys(room.players).length > 0) {
+    room.gameOver = true;
+    room.winner = null;
+    io.to(room.id).emit("draw", { message: "모두 사망했습니다." });
+    io.to(room.id).emit("gameOver", { winnerId: null });
+  }
+}
+
 function killEntity(room, entity) {
   entity.alive = false;
   entity.isBubbled = false;
   entity.bubbleEndsAt = 0;
   io.to(room.id).emit("playerDead", { id: entity.id });
+  room.stateDirty = true;
+  if (!entity.id.startsWith("ai-")) {
+    checkRoundOutcome(room);
+  }
 }
 
 function handleHits(room) {
@@ -300,6 +380,9 @@ function handleHits(room) {
       if (!entity.alive) continue;
       const rect = { x: entity.x, y: entity.y, w: entity.width, h: entity.height };
       if (ex.cells.some((c) => rectOverlapsTile(rect, c.col, c.row))) {
+        if (!entity.isBubbled) {
+          room.stateDirty = true;
+        }
         bubbleEntity(entity);
       }
     }
@@ -338,30 +421,46 @@ function handleItemPickup(room) {
     if (idx !== -1) {
       const [item] = room.items.splice(idx, 1);
       applyItem(entity, item);
+      room.stateDirty = true;
     }
   }
 }
 
-function updateAi(room) {
-  const humans = Object.values(room.players).filter((p) => p.alive && !p.isBubbled);
+function updateAiDirection(room) {
+  const dirs = ["up", "down", "left", "right"];
   for (const ai of room.aiBots) {
-    if (!ai.alive || ai.isBubbled) continue;
-    if (humans.length === 0) {
+    if (!ai.alive || ai.isBubbled) {
       ai.inputDir = null;
       continue;
     }
-    const target = humans.reduce((best, p) => {
-      const d = Math.abs(getEntityTile(p).col - getEntityTile(ai).col) + Math.abs(getEntityTile(p).row - getEntityTile(ai).row);
-      if (!best || d < best.dist) return { p, dist: d };
-      return best;
-    }, null).p;
-    const aiTile = getEntityTile(ai);
-    const targetTile = getEntityTile(target);
-    if (aiTile.col < targetTile.col) ai.inputDir = "right";
-    else if (aiTile.col > targetTile.col) ai.inputDir = "left";
-    else if (aiTile.row < targetTile.row) ai.inputDir = "down";
-    else ai.inputDir = "up";
-    if (Math.random() < 0.01) placeBomb(room, ai);
+    const shuffled = [...dirs].sort(() => Math.random() - 0.5);
+    let chosen = null;
+    for (const dir of shuffled) {
+      const trial = { ...ai };
+      trial.inputDir = dir;
+      const step = SPEED_BY_LEVEL[trial.speedLevel] * TILE_SIZE * 0.1;
+      if (dir === "up") trial.y -= step;
+      if (dir === "down") trial.y += step;
+      if (dir === "left") trial.x -= step;
+      if (dir === "right") trial.x += step;
+      if (
+        !rectHitsWorld(
+          room,
+          ai,
+          { x: trial.x, y: trial.y, w: trial.width, h: trial.height },
+        )
+      ) {
+        chosen = dir;
+        break;
+      }
+    }
+    if (ai.inputDir !== chosen) {
+      ai.inputDir = chosen;
+      room.stateDirty = true;
+    }
+    if (Math.random() < 0.12) {
+      placeBomb(room, ai);
+    }
   }
 }
 
@@ -373,15 +472,13 @@ function serializeRoom(room) {
     players: Object.values(room.players).map((p) => ({
       id: p.id,
       nickname: p.nickname,
+      team: p.team,
       x: p.x,
       y: p.y,
-      width: p.width,
-      height: p.height,
       alive: p.alive,
-      isBubbled: p.isBubbled,
-      speedLevel: p.speedLevel,
-      maxBombs: p.maxBombs,
+      bombCount: p.maxBombs,
       bombRange: p.bombRange,
+      speed: SPEED_BY_LEVEL[p.speedLevel],
     })),
     aiBots: room.aiBots.map((a) => ({
       id: a.id,
@@ -393,9 +490,18 @@ function serializeRoom(room) {
       alive: a.alive,
       isBubbled: a.isBubbled,
     })),
-    bombs: room.bombs,
+    bombs: room.bombs.map((b) => ({
+      x: MAP_OFFSET_X + b.col * TILE_SIZE + TILE_SIZE / 2,
+      y: MAP_OFFSET_Y + b.row * TILE_SIZE + TILE_SIZE / 2,
+      ownerId: b.ownerId,
+      timer: Math.max(0, b.explodeAt - Date.now()),
+    })),
     explosions: room.explosions,
-    items: room.items,
+    items: room.items.map((it) => ({
+      x: MAP_OFFSET_X + it.col * TILE_SIZE + TILE_SIZE / 2,
+      y: MAP_OFFSET_Y + it.row * TILE_SIZE + TILE_SIZE / 2,
+      type: it.type,
+    })),
     gameOver: room.gameOver,
     winner: room.winner,
   };
@@ -406,7 +512,6 @@ function tickRoom(room) {
   const dt = Math.min(0.05, (now - room.lastTick) / 1000);
   room.lastTick = now;
 
-  updateAi(room);
   for (const p of Object.values(room.players)) moveEntity(room, p, dt);
   for (const a of room.aiBots) moveEntity(room, a, dt);
 
@@ -414,28 +519,73 @@ function tickRoom(room) {
     if (now >= bomb.explodeAt) explodeBomb(room, bomb);
   }
 
+  const prevExplosionLen = room.explosions.length;
   room.explosions = room.explosions.filter((e) => e.endsAt > now);
+  if (room.explosions.length !== prevExplosionLen) {
+    room.stateDirty = true;
+  }
   handleHits(room);
   handleBubbleTouches(room);
   handleBubbleTimeouts(room);
   handleItemPickup(room);
 
-  const aliveHumans = Object.values(room.players).filter((p) => p.alive);
-  if (!room.gameOver && aliveHumans.length <= 1 && Object.keys(room.players).length > 1) {
-    room.gameOver = true;
-    room.winner = aliveHumans[0] ? aliveHumans[0].id : null;
-    io.to(room.id).emit("gameOver", { winnerId: room.winner });
-  }
+  checkRoundOutcome(room);
   if (!room.gameOver && room.aiBots.every((a) => !a.alive)) {
     io.to(room.id).emit("stageOver", { message: "AI defeated" });
   }
 
-  io.to(room.id).emit("gameState", serializeRoom(room));
+  if (room.stateDirty) {
+    io.to(room.id).emit("gameState", serializeRoom(room));
+    room.stateDirty = false;
+  }
+}
+
+function resetRoomRound(room) {
+  room.map = cloneMap();
+  room.bombs = [];
+  room.explosions = [];
+  room.items = [];
+  room.gameOver = false;
+  room.winner = null;
+  room.lastTick = Date.now();
+  room.stateDirty = true;
+  for (const player of Object.values(room.players)) {
+    const world = tileToWorld(player.spawn.col, player.spawn.row);
+    player.x = world.x;
+    player.y = world.y;
+    player.speedLevel = 1;
+    player.maxBombs = 1;
+    player.availableBombs = 1;
+    player.bombRange = 1;
+    player.alive = true;
+    player.isBubbled = false;
+    player.bubbleEndsAt = 0;
+    player.inputDir = null;
+  }
+  for (const ai of room.aiBots) {
+    const world = tileToWorld(7, 6);
+    ai.x = world.x;
+    ai.y = world.y;
+    ai.speedLevel = 1;
+    ai.maxBombs = 1;
+    ai.availableBombs = 1;
+    ai.bombRange = 1;
+    ai.alive = true;
+    ai.isBubbled = false;
+    ai.bubbleEndsAt = 0;
+    ai.inputDir = null;
+  }
 }
 
 setInterval(() => {
   for (const room of rooms.values()) tickRoom(room);
 }, TICK_RATE);
+
+setInterval(() => {
+  for (const room of rooms.values()) {
+    updateAiDirection(room);
+  }
+}, 500);
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -476,7 +626,9 @@ io.on("connection", (socket) => {
     if (!room) return;
     const player = room.players[socket.id];
     if (!player || !player.alive) return;
+    console.log("[move] 받음", { direction }, "플레이어위치", player.x, player.y);
     player.inputDir = direction || null;
+    room.stateDirty = true;
   });
 
   socket.on("placeBomb", () => {
@@ -498,6 +650,15 @@ io.on("connection", (socket) => {
       nickname: player.nickname,
       message: String(message || "").slice(0, 120),
     });
+  });
+
+  socket.on("restartRequest", () => {
+    const roomId = socketToRoom.get(socket.id);
+    if (!roomId) return;
+    const room = rooms.get(roomId);
+    if (!room) return;
+    resetRoomRound(room);
+    io.to(room.id).emit("gameState", serializeRoom(room));
   });
 
   socket.on("disconnect", () => {
