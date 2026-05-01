@@ -16,7 +16,7 @@
     </div>
 
     <div class="container">
-      <h1>Crazy Arcade Multiplayer</h1>
+      <h1>Front Arcade Multiplayer</h1>
 
       <div id="lobbyPanel" class="lobby">
         <div id="stepNickname">
@@ -28,6 +28,7 @@
 
         <div id="stepCustomize" style="display: none">
           <h3>2) 캐릭터 커스터마이징</h3>
+          <button id="backToNicknameBtn">← 뒤로</button>
           <div class="game-layout">
             <div style="text-align: left; width: 460px">
               <label>모양</label>
@@ -77,6 +78,7 @@
 
         <div id="stepMode" style="display: none">
           <h3>3) 방 만들기 / 방 선택하기</h3>
+          <button id="backToCustomizeBtn">← 뒤로</button>
           <div style="text-align: left; width: 640px; margin: 0 auto">
             <h4>방 만들기</h4>
             <select id="createModeSelect">
@@ -90,6 +92,12 @@
             <button id="refreshRoomsBtn">목록 새로고침</button>
             <div id="roomListBox"></div>
           </div>
+        </div>
+
+        <div class="chat-box" style="margin-top:10px;">
+          <h4>로비 전체 채팅</h4>
+          <div id="lobbyChatLog" class="chat-log"></div>
+          <input id="lobbyChatInput" type="text" maxlength="120" placeholder="엔터로 로비 채팅 전송" />
         </div>
       </div>
 

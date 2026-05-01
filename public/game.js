@@ -12,6 +12,8 @@ const loadingTip = document.getElementById("loadingTip");
 const nicknameInput = document.getElementById("nicknameInput");
 const toCustomizeBtn = document.getElementById("toCustomizeBtn");
 const toModeBtn = document.getElementById("toModeBtn");
+const backToNicknameBtn = document.getElementById("backToNicknameBtn");
+const backToCustomizeBtn = document.getElementById("backToCustomizeBtn");
 const nicknameWarn = document.getElementById("nicknameWarn");
 const colorWarn = document.getElementById("colorWarn");
 const stepNickname = document.getElementById("stepNickname");
@@ -21,6 +23,8 @@ const createModeSelect = document.getElementById("createModeSelect");
 const createRoomBtn = document.getElementById("createRoomBtn");
 const refreshRoomsBtn = document.getElementById("refreshRoomsBtn");
 const roomListBox = document.getElementById("roomListBox");
+const lobbyChatLog = document.getElementById("lobbyChatLog");
+const lobbyChatInput = document.getElementById("lobbyChatInput");
 
 const shapeSelect = document.getElementById("shapeSelect");
 const mainColorPicker = document.getElementById("mainColorPicker");
@@ -463,8 +467,9 @@ function toSpeedScale(size) {
 function loop(now) {
   const dt = Math.min(0.05, (now - lastFrame) / 1000);
   lastFrame = now;
+  const isTyping = document.activeElement === chatInput || document.activeElement === lobbyChatInput;
 
-  if (gameState?.started && myId && !overlayText) {
+  if (gameState?.started && myId && !overlayText && !isTyping) {
     const d = pressedDir();
     if (d) socket.emit("move", { dir: d, dt });
     if (keys.Space && !spaceConsumed) {
@@ -561,6 +566,10 @@ toCustomizeBtn.addEventListener("click", () => {
   stepNickname.style.display = "none";
   stepCustomize.style.display = "block";
 });
+backToNicknameBtn?.addEventListener("click", () => {
+  stepCustomize.style.display = "none";
+  stepNickname.style.display = "block";
+});
 
 toModeBtn.addEventListener("click", () => {
   if (isTooDark(customization.mainColor) || isTooDark(customization.borderColor)) {
@@ -572,6 +581,10 @@ toModeBtn.addEventListener("click", () => {
   stepCustomize.style.display = "none";
   stepMode.style.display = "block";
   socket.emit("requestRoomList");
+});
+backToCustomizeBtn?.addEventListener("click", () => {
+  stepMode.style.display = "none";
+  stepCustomize.style.display = "block";
 });
 
 shapeSelect.addEventListener("change", () => { customization.shape = shapeSelect.value; saveCustomization(); });
@@ -622,6 +635,8 @@ finalLobbyBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (e) => {
+  const isTyping = document.activeElement === chatInput || document.activeElement === lobbyChatInput;
+  if (isTyping) return;
   if (e.code === "KeyR" && overlayText) {
     socket.emit("restart");
     overlayText = "";
@@ -645,9 +660,21 @@ chatInput.addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   const message = chatInput.value.trim();
   if (!message) return;
-  socket.emit("chat", { message });
+  socket.emit("roomChat", { message });
   chatInput.value = "";
 });
+lobbyChatInput?.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const message = lobbyChatInput.value.trim();
+  if (!message) return;
+  socket.emit("lobbyChat", { message });
+  lobbyChatInput.value = "";
+});
+function clearGameKeys() {
+  Object.keys(keys).forEach((k) => { keys[k] = false; });
+}
+chatInput.addEventListener("focus", clearGameKeys);
+lobbyChatInput?.addEventListener("focus", clearGameKeys);
 
 socket.on("joinedLobby", ({ roomId }) => {
   roomInfo.textContent = `Room: ${roomId}`;
@@ -752,11 +779,40 @@ socket.on("gameOver", ({ result, winnerId, winnerTeam }) => {
   }, 3000);
 });
 
-socket.on("chat", ({ nickname, message }) => {
+socket.on("roomChat", ({ nickname, message }) => {
   const line = document.createElement("div");
   line.textContent = `[${nickname}] ${message}`;
   chatLog.appendChild(line);
   chatLog.scrollTop = chatLog.scrollHeight;
+});
+
+socket.on("roomChatHistory", ({ messages }) => {
+  chatLog.innerHTML = "";
+  (messages || []).forEach((m) => {
+    const line = document.createElement("div");
+    line.textContent = `[${m.nickname}] ${m.message}`;
+    chatLog.appendChild(line);
+  });
+  chatLog.scrollTop = chatLog.scrollHeight;
+});
+
+socket.on("lobbyChat", ({ nickname, message }) => {
+  if (!lobbyChatLog) return;
+  const line = document.createElement("div");
+  line.textContent = `[${nickname}] ${message}`;
+  lobbyChatLog.appendChild(line);
+  lobbyChatLog.scrollTop = lobbyChatLog.scrollHeight;
+});
+
+socket.on("lobbyChatHistory", ({ messages }) => {
+  if (!lobbyChatLog) return;
+  lobbyChatLog.innerHTML = "";
+  (messages || []).forEach((m) => {
+    const line = document.createElement("div");
+    line.textContent = `[${m.nickname}] ${m.message}`;
+    lobbyChatLog.appendChild(line);
+  });
+  lobbyChatLog.scrollTop = lobbyChatLog.scrollHeight;
 });
 
 socket.on("connect", () => {

@@ -13,7 +13,7 @@ const MAP_COLS = 15;
 const MAP_ROWS = 13;
 const BOMB_FUSE_MS = 3000;
 const OWNER_PASS_MS = 2000;
-const BUBBLE_MS = 3000;
+const BUBBLE_MS = 6000;
 const BLOCK_FILL_RATIO = 0.7;
 const WALL_MIN = 0.15;
 const WALL_MAX = 0.2;
@@ -23,7 +23,7 @@ const BROADCAST_MS = 50;
 const BOMB_GAP_BLOCK_RADIUS = 22;
 const AI_DIR_LOCK_MS = 280;
 const AI_EVADE_LOCK_MS = 1400;
-const EXPLOSION_HITBOX_SCALE = 0.9;
+const EXPLOSION_HITBOX_SCALE = 0.75;
 
 const SPAWNS = {
   P1: { tileX: 1, tileY: 1 },
@@ -41,6 +41,7 @@ const MODE = {
 const rooms = new Map();
 const socketToRoom = new Map();
 let roomSeq = 1;
+const lobbyChatHistory = [];
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
@@ -142,6 +143,7 @@ function createRoom(mode) {
     players: {},
     bombs: [],
     items: [],
+    chatHistory: [],
     explosions: [],
     started: false,
     gameOver: false,
@@ -164,6 +166,11 @@ function clearCountdown(room) {
     room.countdownTimer = null;
   }
   room.countdownValue = 0;
+}
+
+function pushChat(history, msg) {
+  history.push(msg);
+  while (history.length > 50) history.shift();
 }
 
 function findOrCreateRoom(mode) {
@@ -849,6 +856,8 @@ function removeFromRoom(socketId) {
 app.use(express.static(path.join(__dirname, "public")));
 
 io.on("connection", (socket) => {
+  socket.emit("lobbyChatHistory", { messages: lobbyChatHistory });
+
   socket.on("requestRoomList", () => {
     socket.emit("roomList", { rooms: listJoinableRooms() });
   });
@@ -865,6 +874,8 @@ io.on("connection", (socket) => {
     });
     room.readyByHumanId[socket.id] = false;
     socket.emit("joinedLobby", { roomId: room.id, mode });
+    socket.emit("roomChatHistory", { messages: room.chatHistory });
+    socket.emit("lobbyChatHistory", { messages: lobbyChatHistory });
     broadcastLobby(room);
   });
 
@@ -883,6 +894,8 @@ io.on("connection", (socket) => {
     });
     room.readyByHumanId[socket.id] = false;
     socket.emit("joinedLobby", { roomId: room.id, mode: room.mode });
+    socket.emit("roomChatHistory", { messages: room.chatHistory });
+    socket.emit("lobbyChatHistory", { messages: lobbyChatHistory });
     broadcastLobby(room);
   });
 
@@ -898,6 +911,8 @@ io.on("connection", (socket) => {
     });
     room.readyByHumanId[socket.id] = false;
     socket.emit("joinedLobby", { roomId: room.id, mode });
+    socket.emit("roomChatHistory", { messages: room.chatHistory });
+    socket.emit("lobbyChatHistory", { messages: lobbyChatHistory });
     if (room.humans.length < 2) {
       broadcastLobby(room);
       return;
@@ -974,12 +989,24 @@ io.on("connection", (socket) => {
     removeFromRoom(socket.id);
   });
 
-  socket.on("chat", ({ message }) => {
+  socket.on("roomChat", ({ message }) => {
     const room = rooms.get(socketToRoom.get(socket.id));
     if (!room) return;
     const sender = room.humans.find((h) => h.id === socket.id);
     if (!sender) return;
-    io.to(room.id).emit("chat", { nickname: sender.nickname, message: String(message || "").slice(0, 120) });
+    const payload = { nickname: sender.nickname, message: String(message || "").slice(0, 120) };
+    pushChat(room.chatHistory, payload);
+    io.to(room.id).emit("roomChat", payload);
+  });
+
+  socket.on("lobbyChat", ({ message }) => {
+    const room = rooms.get(socketToRoom.get(socket.id));
+    if (!room) return;
+    const sender = room.humans.find((h) => h.id === socket.id);
+    if (!sender) return;
+    const payload = { nickname: sender.nickname, message: String(message || "").slice(0, 120) };
+    pushChat(lobbyChatHistory, payload);
+    io.emit("lobbyChat", payload);
   });
 
   socket.on("disconnect", () => removeFromRoom(socket.id));
