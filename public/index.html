@@ -121,6 +121,15 @@
         <button id="startSoloBtn" style="display: none">게임 시작 (AI 자동 채움)</button>
         <div class="game-layout">
           <canvas id="gameCanvas" width="720" height="624"></canvas>
+          <div id="mobileControls">
+            <div class="mobile-dpad">
+              <button class="mobile-btn dir up" data-key="ArrowUp">▲</button>
+              <button class="mobile-btn dir left" data-key="ArrowLeft">◀</button>
+              <button class="mobile-btn dir right" data-key="ArrowRight">▶</button>
+              <button class="mobile-btn dir down" data-key="ArrowDown">▼</button>
+            </div>
+            <button id="mobileBombBtn" class="mobile-btn bomb">💣</button>
+          </div>
           <div class="side-panel">
             <h3>플레이어</h3>
             <div id="playerList">-</div>
@@ -135,15 +144,6 @@
           </div>
         </div>
         <div id="itemToast" style="position:absolute;left:50%;top:130px;transform:translateX(-50%);font-weight:700;font-size:26px;display:none;"></div>
-        <div id="mobileControls">
-          <div class="mobile-dpad">
-            <button class="mobile-btn dir up" data-key="ArrowUp">▲</button>
-            <button class="mobile-btn dir left" data-key="ArrowLeft">◀</button>
-            <button class="mobile-btn dir right" data-key="ArrowRight">▶</button>
-            <button class="mobile-btn dir down" data-key="ArrowDown">▼</button>
-          </div>
-          <button id="mobileBombBtn" class="mobile-btn bomb">💣</button>
-        </div>
       </div>
     </div>
     <div id="finalScoreOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.76);display:none;z-index:10000;color:#fff;align-items:center;justify-content:center;flex-direction:column;">
