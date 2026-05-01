@@ -23,6 +23,7 @@ const createModeSelect = document.getElementById("createModeSelect");
 const createRoomBtn = document.getElementById("createRoomBtn");
 const refreshRoomsBtn = document.getElementById("refreshRoomsBtn");
 const roomListBox = document.getElementById("roomListBox");
+const lobbyChatBox = document.getElementById("lobbyChatBox");
 const lobbyChatLog = document.getElementById("lobbyChatLog");
 const lobbyChatInput = document.getElementById("lobbyChatInput");
 
@@ -522,6 +523,7 @@ function enterLobby() {
   stepNickname.style.display = "block";
   stepCustomize.style.display = "none";
   stepMode.style.display = "none";
+  if (lobbyChatBox) lobbyChatBox.style.display = "none";
 }
 
 function enterRoomSelectLobby() {
@@ -530,6 +532,7 @@ function enterRoomSelectLobby() {
   stepNickname.style.display = "none";
   stepCustomize.style.display = "none";
   stepMode.style.display = "block";
+  if (lobbyChatBox) lobbyChatBox.style.display = "block";
   socket.emit("requestRoomList");
 }
 
@@ -565,10 +568,12 @@ toCustomizeBtn.addEventListener("click", () => {
   nicknameWarn.textContent = "";
   stepNickname.style.display = "none";
   stepCustomize.style.display = "block";
+  if (lobbyChatBox) lobbyChatBox.style.display = "none";
 });
 backToNicknameBtn?.addEventListener("click", () => {
   stepCustomize.style.display = "none";
   stepNickname.style.display = "block";
+  if (lobbyChatBox) lobbyChatBox.style.display = "none";
 });
 
 toModeBtn.addEventListener("click", () => {
@@ -580,11 +585,13 @@ toModeBtn.addEventListener("click", () => {
   saveCustomization();
   stepCustomize.style.display = "none";
   stepMode.style.display = "block";
+  if (lobbyChatBox) lobbyChatBox.style.display = "block";
   socket.emit("requestRoomList");
 });
 backToCustomizeBtn?.addEventListener("click", () => {
   stepMode.style.display = "none";
   stepCustomize.style.display = "block";
+  if (lobbyChatBox) lobbyChatBox.style.display = "none";
 });
 
 shapeSelect.addEventListener("change", () => { customization.shape = shapeSelect.value; saveCustomization(); });
@@ -635,6 +642,9 @@ finalLobbyBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (e) => {
+  const t = e.target;
+  const isInputTarget = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+  if (isInputTarget) return;
   const isTyping = document.activeElement === chatInput || document.activeElement === lobbyChatInput;
   if (isTyping) return;
   if (e.code === "KeyR" && overlayText) {
@@ -650,6 +660,9 @@ document.addEventListener("keydown", (e) => {
   }
 });
 document.addEventListener("keyup", (e) => {
+  const t = e.target;
+  const isInputTarget = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+  if (isInputTarget) return;
   if (e.code in keys) {
     keys[e.code] = false;
     e.preventDefault();
@@ -657,14 +670,18 @@ document.addEventListener("keyup", (e) => {
 });
 
 chatInput.addEventListener("keydown", (e) => {
+  if (e.code in keys) e.stopPropagation();
   if (e.key !== "Enter") return;
+  e.preventDefault();
   const message = chatInput.value.trim();
   if (!message) return;
   socket.emit("roomChat", { message });
   chatInput.value = "";
 });
 lobbyChatInput?.addEventListener("keydown", (e) => {
+  if (e.code in keys) e.stopPropagation();
   if (e.key !== "Enter") return;
+  e.preventDefault();
   const message = lobbyChatInput.value.trim();
   if (!message) return;
   socket.emit("lobbyChat", { message });
