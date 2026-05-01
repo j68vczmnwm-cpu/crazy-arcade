@@ -96,3 +96,79 @@ canvas {
   padding: 8px;
   min-height: 40px;
 }
+
+#mobileControls {
+  display: none;
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+  body {
+    display: block;
+    padding: 8px;
+  }
+  .container {
+    width: 100%;
+    border-radius: 0;
+    padding: 8px;
+  }
+  .game-layout {
+    flex-direction: column;
+  }
+  canvas#gameCanvas {
+    width: 100%;
+    height: auto;
+  }
+  .side-panel {
+    width: 100%;
+  }
+  #mobileControls {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+    z-index: 12000;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 0 14px;
+    pointer-events: none;
+  }
+  .mobile-dpad {
+    width: 170px;
+    height: 170px;
+    position: relative;
+    pointer-events: auto;
+  }
+  .mobile-btn {
+    position: absolute;
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.35);
+    background: rgba(18, 26, 45, 0.45);
+    color: #eaf1ff;
+    font-size: 24px;
+    font-weight: 800;
+    backdrop-filter: blur(4px);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .mobile-btn.up { left: 57px; top: 0; }
+  .mobile-btn.left { left: 0; top: 57px; }
+  .mobile-btn.right { left: 114px; top: 57px; }
+  .mobile-btn.down { left: 57px; top: 114px; }
+  .mobile-btn.bomb {
+    position: static;
+    width: 86px;
+    height: 86px;
+    border-radius: 999px;
+    margin-right: 6px;
+    pointer-events: auto;
+    background: rgba(75, 34, 34, 0.5);
+  }
+  .mobile-btn:active {
+    transform: scale(0.97);
+    background: rgba(43, 95, 170, 0.6);
+  }
+}

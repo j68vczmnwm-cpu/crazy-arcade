@@ -54,6 +54,9 @@ const changeModeBtn = document.getElementById("changeModeBtn");
 const readyBtn = document.getElementById("readyBtn");
 const gamePanel = document.getElementById("gamePanel");
 const backLobbyBtn = document.getElementById("backLobbyBtn");
+const mobileControls = document.getElementById("mobileControls");
+const mobileBombBtn = document.getElementById("mobileBombBtn");
+const mobileDirButtons = Array.from(document.querySelectorAll("#mobileControls .dir"));
 
 const finalScoreOverlay = document.getElementById("finalScoreOverlay");
 const finalScoreTable = document.getElementById("finalScoreTable");
@@ -690,6 +693,50 @@ lobbyChatInput?.addEventListener("keydown", (e) => {
 function clearGameKeys() {
   Object.keys(keys).forEach((k) => { keys[k] = false; });
 }
+function bindTouchControls() {
+  const pressKey = (code) => {
+    if (code in keys) keys[code] = true;
+  };
+  const releaseKey = (code) => {
+    if (code in keys) keys[code] = false;
+  };
+  const stop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  mobileDirButtons.forEach((btn) => {
+    const key = btn.dataset.key;
+    if (!key) return;
+    btn.addEventListener("pointerdown", (e) => {
+      stop(e);
+      pressKey(key);
+    });
+    btn.addEventListener("pointerup", (e) => {
+      stop(e);
+      releaseKey(key);
+    });
+    btn.addEventListener("pointercancel", () => releaseKey(key));
+    btn.addEventListener("pointerleave", () => releaseKey(key));
+  });
+
+  if (mobileBombBtn) {
+    mobileBombBtn.addEventListener("pointerdown", (e) => {
+      stop(e);
+      pressKey("Space");
+    });
+    mobileBombBtn.addEventListener("pointerup", (e) => {
+      stop(e);
+      releaseKey("Space");
+    });
+    mobileBombBtn.addEventListener("pointercancel", () => releaseKey("Space"));
+    mobileBombBtn.addEventListener("pointerleave", () => releaseKey("Space"));
+  }
+
+  if (mobileControls) {
+    mobileControls.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+}
 chatInput.addEventListener("focus", clearGameKeys);
 lobbyChatInput?.addEventListener("focus", clearGameKeys);
 
@@ -869,4 +916,5 @@ applyCustomizationToControls();
 drawPreview();
 enterLobby();
 runLoadingSequence();
+bindTouchControls();
 requestAnimationFrame(loop);
