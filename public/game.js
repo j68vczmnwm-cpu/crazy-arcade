@@ -684,7 +684,7 @@ lobbyChatInput?.addEventListener("keydown", (e) => {
   e.preventDefault();
   const message = lobbyChatInput.value.trim();
   if (!message) return;
-  socket.emit("lobbyChat", { message });
+  socket.emit("lobbyChat", { message, nickname: nicknameInput.value.trim() || "Player" });
   lobbyChatInput.value = "";
 });
 function clearGameKeys() {

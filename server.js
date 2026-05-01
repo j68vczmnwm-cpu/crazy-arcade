@@ -40,6 +40,7 @@ const MODE = {
 
 const rooms = new Map();
 const socketToRoom = new Map();
+const socketNicknames = new Map();
 let roomSeq = 1;
 const lobbyChatHistory = [];
 
@@ -837,6 +838,7 @@ function removeFromRoom(socketId) {
   if (!roomId) return;
   const room = rooms.get(roomId);
   socketToRoom.delete(socketId);
+  socketNicknames.delete(socketId);
   if (!room) return;
   room.humans = room.humans.filter((h) => h.id !== socketId);
   delete room.readyByHumanId[socketId];
@@ -867,9 +869,11 @@ io.on("connection", (socket) => {
     const room = createRoom(mode);
     socket.join(room.id);
     socketToRoom.set(socket.id, room.id);
+    const safeNickname = (nickname || "Player").slice(0, 16);
+    socketNicknames.set(socket.id, safeNickname);
     room.humans.push({
       id: socket.id,
-      nickname: (nickname || "Player").slice(0, 16),
+      nickname: safeNickname,
       customization: customization || null,
     });
     room.readyByHumanId[socket.id] = false;
@@ -887,9 +891,11 @@ io.on("connection", (socket) => {
     }
     socket.join(room.id);
     socketToRoom.set(socket.id, room.id);
+    const safeNickname = (nickname || "Player").slice(0, 16);
+    socketNicknames.set(socket.id, safeNickname);
     room.humans.push({
       id: socket.id,
-      nickname: (nickname || "Player").slice(0, 16),
+      nickname: safeNickname,
       customization: customization || null,
     });
     room.readyByHumanId[socket.id] = false;
@@ -904,9 +910,11 @@ io.on("connection", (socket) => {
     const room = findOrCreateRoom(mode);
     socket.join(room.id);
     socketToRoom.set(socket.id, room.id);
+    const safeNickname = (nickname || "Player").slice(0, 16);
+    socketNicknames.set(socket.id, safeNickname);
     room.humans.push({
       id: socket.id,
-      nickname: (nickname || "Player").slice(0, 16),
+      nickname: safeNickname,
       customization: customization || null,
     });
     room.readyByHumanId[socket.id] = false;
@@ -999,12 +1007,13 @@ io.on("connection", (socket) => {
     io.to(room.id).emit("roomChat", payload);
   });
 
-  socket.on("lobbyChat", ({ message }) => {
+  socket.on("lobbyChat", ({ message, nickname }) => {
     const room = rooms.get(socketToRoom.get(socket.id));
-    if (!room) return;
-    const sender = room.humans.find((h) => h.id === socket.id);
-    if (!sender) return;
-    const payload = { nickname: sender.nickname, message: String(message || "").slice(0, 120) };
+    const sender = room?.humans.find((h) => h.id === socket.id);
+    const safeNickname = String(sender?.nickname || socketNicknames.get(socket.id) || nickname || "Player").slice(0, 16);
+    socketNicknames.set(socket.id, safeNickname);
+    const payload = { nickname: safeNickname, message: String(message || "").slice(0, 120) };
+    if (!payload.message) return;
     pushChat(lobbyChatHistory, payload);
     io.emit("lobbyChat", payload);
   });
