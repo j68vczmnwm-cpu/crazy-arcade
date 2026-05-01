@@ -38,6 +38,8 @@ const MODE = {
   COOP_DUO: "coop_duo",
 };
 
+const MAX_HUMANS_PER_ROOM = 4;
+const MIN_HUMANS_TO_START = 2;
 const rooms = new Map();
 const socketToRoom = new Map();
 const socketNicknames = new Map();
@@ -149,6 +151,7 @@ function createRoom(mode) {
     started: false,
     gameOver: false,
     humans: [],
+    maxHumans: MAX_HUMANS_PER_ROOM,
     aiIds: [],
     lastBroadcastAt: 0,
     readyByHumanId: {},
@@ -176,7 +179,7 @@ function pushChat(history, msg) {
 
 function findOrCreateRoom(mode) {
   for (const room of rooms.values()) {
-    if (room.mode === mode && !room.started && room.humans.length < 2) return room;
+    if (room.mode === mode && !room.started && room.humans.length < room.maxHumans) return room;
   }
   return createRoom(mode);
 }
@@ -184,11 +187,12 @@ function findOrCreateRoom(mode) {
 function listJoinableRooms() {
   const list = [];
   for (const room of rooms.values()) {
-    if (!room.started && room.humans.length < 2) {
+    if (!room.started && room.humans.length < room.maxHumans) {
       list.push({
         roomId: room.id,
         mode: room.mode,
         connected: room.humans.length,
+        maxHumans: room.maxHumans,
       });
     }
   }
@@ -463,6 +467,20 @@ function setupModeEntities(room) {
   room.aiIds = [];
   const h1 = room.humans[0];
   const h2 = room.humans[1];
+  if (room.humans.length >= 3) {
+    const spawnOrder = [SPAWNS.P1, SPAWNS.P2, SPAWNS.P3, SPAWNS.P4];
+    room.humans.slice(0, 4).forEach((h, idx) => {
+      room.players[h.id] = mkEntity({
+        id: h.id,
+        nickname: h.nickname,
+        isAi: false,
+        team: idx % 2 === 0 ? "A" : "B",
+        spawn: spawnOrder[idx],
+        customization: h.customization,
+      });
+    });
+    return;
+  }
   if (room.mode === MODE.DUEL) {
     room.players[h1.id] = mkEntity({ id: h1.id, nickname: h1.nickname, isAi: false, team: "A", spawn: SPAWNS.P1, customization: h1.customization });
     if (h2) {
@@ -540,14 +558,15 @@ function broadcastLobby(room) {
   io.to(room.id).emit("lobbyState", {
     mode: room.mode,
     connected: room.humans.length,
-    required: 2,
+    required: MIN_HUMANS_TO_START,
+    maxHumans: room.maxHumans,
     canStart: room.humans.length === 1 && !room.started,
     countdown: room.countdownValue,
     ready,
     message:
       room.countdownValue > 0
         ? `게임 시작 ${room.countdownValue}...`
-        : `상대방 기다리는 중... (${room.humans.length}/2명)`,
+        : `상대방 기다리는 중... (${room.humans.length}/${room.maxHumans}명, 시작 최소 ${MIN_HUMANS_TO_START}명)`,
   });
 }
 
@@ -567,7 +586,7 @@ function beginReadyCountdown(room) {
 }
 
 function maybeStartCountdown(room) {
-  if (room.started || room.humans.length !== 2) {
+  if (room.started || room.humans.length < MIN_HUMANS_TO_START) {
     clearCountdown(room);
     return;
   }
@@ -885,7 +904,7 @@ io.on("connection", (socket) => {
 
   socket.on("joinGameRoom", ({ roomId, nickname, customization }) => {
     const room = rooms.get(roomId);
-    if (!room || room.started || room.humans.length >= 2) {
+    if (!room || room.started || room.humans.length >= room.maxHumans) {
       socket.emit("roomList", { rooms: listJoinableRooms() });
       return;
     }
@@ -921,7 +940,7 @@ io.on("connection", (socket) => {
     socket.emit("joinedLobby", { roomId: room.id, mode });
     socket.emit("roomChatHistory", { messages: room.chatHistory });
     socket.emit("lobbyChatHistory", { messages: lobbyChatHistory });
-    if (room.humans.length < 2) {
+    if (room.humans.length < MIN_HUMANS_TO_START) {
       broadcastLobby(room);
       return;
     }
